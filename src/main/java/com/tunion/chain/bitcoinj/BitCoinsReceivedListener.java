@@ -49,6 +49,7 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
     {
         try {
             String bitcoinAddr = JedisUtils.getObjectByRawkey(CommConstants.CHAINROUTER_+CommConstants.MANUFACTOR_TYPE.BitCoin.name());
+            bitcoinAddr="cUwTJwSq1Xw6KdGrFSkuY5VijYNQq3zRsqBqPRBFbVMzoXTKnCSe";//mgRm1Z5vEQFSmEmHP1Hy8Puz4bKmnedCMj
             //初始化文件地址，及钱包主地址
             init("bitcoin-blocks", bitcoinAddr);
 
