@@ -2,6 +2,7 @@ package com.tunion.chain;
 
 import com.tunion.cores.BaseTest;
 import com.tunion.cores.result.Results;
+import com.tunion.cores.tools.cache.JedisUtils;
 import com.tunion.cores.utils.JacksonUtil;
 import com.tunion.dubbo.IService.chainrouter.IDubboChainRouter;
 import org.bitcoinj.core.Coin;
@@ -9,6 +10,9 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Created by Think on 2018/2/28.
@@ -69,5 +73,19 @@ public class CoinSendReceiveTest extends BaseTest{
         Coin amount = Coin.parseCoin("0.1");
 
         logger.info(amount.toPlainString());
+
+        Map param=new HashMap<String,String>();
+        param.put("accoutName","lizf");
+        param.put("accoutAddress","1234567890");
+        param.put("accoutType","BTC");
+        param.put("txid","12345678");
+        param.put("amount","90");
+
+//        JedisUtils.pushMessage(JacksonUtil.getJackson(param));
+
+        logger.info(""+JedisUtils.queueSize());
+
+        String msg=JedisUtils.popMessage();
+        logger.info(msg);
     }
 }

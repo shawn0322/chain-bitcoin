@@ -1,6 +1,7 @@
 package com.tunion.chain.bitcoinj;
 
-
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.tunion.chainrouter.pojo.AddressGroup;
 import com.tunion.cores.result.Results;
@@ -49,7 +50,6 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
     {
         try {
             String bitcoinAddr = JedisUtils.getObjectByRawkey(CommConstants.CHAINROUTER_+CommConstants.MANUFACTOR_TYPE.BitCoin.name());
-            bitcoinAddr="cUwTJwSq1Xw6KdGrFSkuY5VijYNQq3zRsqBqPRBFbVMzoXTKnCSe";//mgRm1Z5vEQFSmEmHP1Hy8Puz4bKmnedCMj
             //初始化文件地址，及钱包主地址
             init("bitcoin-blocks", bitcoinAddr);
 
@@ -113,7 +113,7 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
             DumpedPrivateKey dpk = DumpedPrivateKey.fromBase58(params, privateKey);
             key = dpk.getKey();
 
-            Address addressFromKey = LegacyAddress.fromKey(params,key);
+            Address addressFromKey = key.toAddress(params);
             logger.info("Public Address:" + addressFromKey);
         }catch (Exception e)
         {
@@ -187,7 +187,7 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
         blockFile = new File(filePath);
         blockStore = new SPVBlockStore(params, blockFile);
 
-        mainAddress = LegacyAddress.fromKey(params,loadPrivate(privateKey));
+        mainAddress = loadPrivate(privateKey).toAddress(params);
 
         wallet = loadBitcoinWallet(privateKey);
 
@@ -254,6 +254,15 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
             coinReceivedNotifyService.notifyCoinRecevied(toAddress, CommConstants.MANUFACTOR_TYPE.BitCoin.value(), transaction.getHashAsString(), value.toPlainString());
         }
 
+        Futures.addCallback(transaction.getConfidence().getDepthFuture(1), new FutureCallback<TransactionConfidence>() {
+            public void onSuccess(TransactionConfidence result) {
+                logger.debug("Transaction confirmed, wallet balance is :" + wallet.getBalance().toFriendlyString());
+            }
+
+            public void onFailure(Throwable t) {
+                t.printStackTrace();
+            }
+        });
     }
 
     public AddressGroup getNewaddress()
@@ -261,8 +270,7 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
         AddressGroup addressGroup= new AddressGroup();
         try {
             ECKey key = new ECKey();
-            Address newAddress = LegacyAddress.fromKey(params, key);
-                    //key.toAddress(params);
+            Address newAddress = key.toAddress(params);
 
             logger.info("getNewaddress:{}",newAddress.toString());
             addressGroup.setAddress(newAddress.toString());
@@ -289,7 +297,7 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
         logger.info("sendCoins to address:{} with {}",address,amount);
         boolean bRet = false;
         try {
-            Address toAddress = LegacyAddress.fromBase58(params, address);//Address.fromBase58(params, address);
+            Address toAddress = Address.fromBase58(params, address);
 
             Coin amountToSend = Coin.parseCoin(amount);
 
@@ -319,7 +327,7 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
         logger.info("sendCoins to address:{} with {} and fee {}",address,amount,fee);
         boolean bRet = false;
         try {
-            Address toAddress = LegacyAddress.fromBase58(params, address);
+            Address toAddress = Address.fromBase58(params, address);
 
             Coin amountToSend = Coin.parseCoin(amount);
             Coin feeToSend  =  Coin.parseCoin(fee);

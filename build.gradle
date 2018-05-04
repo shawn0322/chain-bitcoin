@@ -1,3 +1,4 @@
+import org.apache.tomcat.Jar
 
 buildscript {
     ext {
@@ -19,7 +20,7 @@ apply plugin: 'idea'
 apply plugin: 'maven'
 apply plugin: 'org.springframework.boot'
 
-group = 'com.tunion.chain.bitcoin'
+group = 'com.tunion.chain.bitcoinj'
 version = '1.0.0-SNAPSHOT'
 sourceCompatibility = 1.8
 
@@ -39,21 +40,15 @@ dependencies {
     compile 'org.springframework.boot:spring-boot-starter-log4j2'
 
     compile 'com.alibaba:dubbo:2.5.7'
-    compile 'io.dubbo.springboot:spring-boot-starter-dubbo:1.0.0'
+
     compile 'com.tunion.dubbo.chainrouter:chain-router:1.0.0-SNAPSHOT'
-    
+    compile 'io.dubbo.springboot:spring-boot-starter-dubbo:1.0.0'
+
     compile 'commons-pool:commons-pool:1.6'
     compile 'org.apache.commons:commons-lang3:3.5'
     compile 'commons-codec:commons-codec:1.10'
     compile 'org.bouncycastle:bcprov-jdk15on:1.56'
-//    compile ('org.bitcoinj:bitcoinj-core:0.14.5')
-//            {
-//                exclude group: 'com.google.guava'
-//            }
-    compile files('lib/bitcoinj-core-0.15-SNAPSHOT.jar')
-    compile 'com.madgag.spongycastle:core:1.58.0.0'
-    compile 'com.google.protobuf:protobuf-java:2.6.1'
-    compile 'com.google.guava:guava:24.0-android'
+    compile ('org.bitcoinj:bitcoinj-core:0.14.5')
 
     testCompile 'org.springframework.boot:spring-boot-starter-test'
     testCompile 'junit:junit:4.12'
