@@ -5,10 +5,10 @@ import com.alibaba.fastjson.JSONObject;
 import com.tunion.chain.bitcoinj.BitCoinsReceivedListener;
 import com.tunion.chainrouter.pojo.AddressGroup;
 import com.tunion.chainrouter.pojo.Transactions;
-import com.tunion.chainrouter.pojo.TranscationFee;
 import com.tunion.cores.result.Results;
 import com.tunion.cores.tools.cache.JedisUtils;
 import com.tunion.cores.utils.*;
+import org.bitcoinj.core.Address;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +18,9 @@ import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
+import static com.tunion.cores.tools.cache.JedisUtils.getObjectByRawkey;
+import static com.tunion.cores.utils.CommConstants.CHAINROUTER_WALLET_;
 
 /**
  * Created by Think on 2018/2/27.
@@ -123,7 +126,7 @@ public class BitcoinService {
 
         try {
 
-            String address = JedisUtils.getObjectByRawkey(accoutName+CommConstants.MANUFACTOR_TYPE.BitCoin.name());
+            String address = getObjectByRawkey(accoutName+CommConstants.MANUFACTOR_TYPE.BitCoin.name());
             //检查账号是否存在，如果已经创建过，提示存在，报错
             if(!StringUtil.isNullStr(address))
             {
@@ -131,18 +134,15 @@ public class BitcoinService {
                 return new Results(CommConstants.API_RETURN_STATUS.ACCOUNT_EXIST_ERROR.value(),CommConstants.API_RETURN_STATUS.ACCOUNT_EXIST_ERROR.desc(),address);
             }
 
-            AddressGroup addressGroup = bitCoinsReceivedListener.getNewaddress();
+            Address derivedAddress = bitCoinsReceivedListener.derivedAddress();
 
             //放到缓存中，通知时需要获取
-            JedisUtils.setObjectByRawkey(CommConstants.MANUFACTOR_TYPE.BitCoin.name()+addressGroup.getAddress(),accoutName);
+            JedisUtils.setObjectByRawkey(CommConstants.MANUFACTOR_TYPE.BitCoin.name()+derivedAddress.toString(),accoutName);
 
             //存放到缓存中，保证只有一个钱包ID
-            JedisUtils.setObjectByRawkey(accoutName+CommConstants.MANUFACTOR_TYPE.BitCoin.name(),addressGroup.getAddress());
+            JedisUtils.setObjectByRawkey(accoutName+CommConstants.MANUFACTOR_TYPE.BitCoin.name(),derivedAddress.toString());
 
-            //key需要放到缓存中
-            JedisUtils.setObjectByRawkey(addressGroup.getAddress(),addressGroup.getAddressKey());
-
-            results = new Results(CommConstants.API_RETURN_STATUS.NORMAL.value(),CommConstants.API_RETURN_STATUS.NORMAL.desc(),addressGroup.getAddress());
+            results = new Results(CommConstants.API_RETURN_STATUS.NORMAL.value(),CommConstants.API_RETURN_STATUS.NORMAL.desc(),derivedAddress.toString());
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -336,63 +336,39 @@ public class BitcoinService {
         return results;
     }
 
-    public Results batchWithdrawal(List<Map> listMap) {
-        String accoutName="", accountAddress="", txAmount="", txFee="", comment="", commentTo="";
+    public Results batchWithdrawal(Map mapTrans, String txFee, String comment) {
+
         Results results = null;
 
-        if(StringUtil.isNullStr(accoutName)||StringUtil.isNullStr(accountAddress)||StringUtil.isNullStr(txAmount)) {
-            return new Results(CommConstants.API_RETURN_STATUS.PARAMETER_ERROR.value(), CommConstants.API_RETURN_STATUS.PARAMETER_ERROR.desc());
-        }
+        String accoutName ="";
 
+        String password = JedisUtils.getObjectByRawkey(CHAINROUTER_WALLET_+CommConstants.MANUFACTOR_TYPE.BitCoin.name());
         //交易前先解密钱包
-        results = decryptWallet("lzf19821210",60);
+        results = decryptWallet(password,60);
         if(!CommConstants.API_RETURN_STATUS.NORMAL.value().equals(results.getStatus())) {
             results.setStatus(CommConstants.API_RETURN_STATUS.ACCOUNT_PASSWORD_ERROR.value());
             results.setError(CommConstants.API_RETURN_STATUS.ACCOUNT_PASSWORD_ERROR.desc());
             return results;
         }
 
-        //获取转出账号的余额，如果余额不足不能完成交易
-        results = checkAccoutBalance(accoutName,txAmount);
-        if(!CommConstants.API_RETURN_STATUS.NORMAL.value().equals(results.getStatus()))
-        {
-            return results;
-        }
+        String transStr = JacksonUtil.getJackson(mapTrans);
 
-        //判断目标地址的有效性
-        results = validateAddress(accoutName);
-        if(!CommConstants.API_RETURN_STATUS.NORMAL.value().equals(results.getStatus()))
-        {
-            return results;
-        }
-
-        //发起交易
-        String cmdStr = String.format("bitcoin-cli sendfrom %s %s %s %d %s %s", StringUtil.quoteString(accoutName), accountAddress,txAmount,CommConstants.CONFIRMATION_COUNT,StringUtil.quoteString(comment),StringUtil.quoteString(commentTo));
-        logger.debug(cmdStr);
+        String cmdStr = String.format("bitcoin-cli settxfee %s ", txFee);
 
         try {
+            //转换交易手续费的数据类型
+            long fee = str2long(txFee);
+            if (fee>0) {
+                logger.debug(cmdStr);
+                results = ShellUtil.callShell(cmdStr);
+            }
+
+            //发起交易
+            cmdStr = String.format("bitcoin-cli sendmany %s %s %d %s", StringUtil.quoteString(accoutName),ShellUtil.formatJsonStr(transStr),CommConstants.CONFIRMATION_COUNT,StringUtil.quoteString(comment));
+            logger.debug(cmdStr);
+
             results = ShellUtil.callShell(cmdStr);
 
-            if(CommConstants.API_RETURN_STATUS.NORMAL.value().equals(results.getStatus()))
-            {
-                String txid = (String) results.getData();
-
-                //转换交易手续费的数据类型
-                long fee = str2long(txFee);
-                if (fee>0) {
-                    TranscationFee transcationFee=new TranscationFee();
-                    transcationFee.setTotalFee(fee);
-                    transcationFee.setReplaceable(true);
-
-                    String feeStr = JacksonUtil.getAllJackson(transcationFee);
-
-                    //设置交易手续费
-                    cmdStr =String.format("bitcoin-cli bumpfee %s %s", txid,ShellUtil.formatJsonStr(feeStr));
-                    logger.debug(cmdStr);
-
-                    results = ShellUtil.callShell(cmdStr);
-                }
-            }
         } catch (Exception e) {
             e.printStackTrace();
         }

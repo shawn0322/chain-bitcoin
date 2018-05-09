@@ -8,6 +8,7 @@ import com.tunion.cores.result.Results;
 import com.tunion.cores.tools.cache.JedisUtils;
 import com.tunion.cores.utils.CommConstants;
 import com.tunion.cores.utils.DateUtil;
+import com.tunion.cores.utils.ShellUtil;
 import com.tunion.cores.utils.StringUtil;
 import com.tunion.dubbo.chainrouter.CoinReceivedNotifyService;
 import org.bitcoinj.core.*;
@@ -49,9 +50,9 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
     public void initWallet()
     {
         try {
-            String bitcoinAddr = JedisUtils.getObjectByRawkey(CommConstants.CHAINROUTER_+CommConstants.MANUFACTOR_TYPE.BitCoin.name());
+            String walletPrivateKey = JedisUtils.getObjectByRawkey(CommConstants.CHAINROUTER_+CommConstants.MANUFACTOR_TYPE.BitCoin.name());
             //初始化文件地址，及钱包主地址
-            init("bitcoin-blocks", bitcoinAddr);
+            init("bitcoin-blocks", walletPrivateKey);
 
             ContextPropagatingThreadFactory ctxPTF = new ContextPropagatingThreadFactory("bitCoin Server");
             Thread thread = ctxPTF.newThread(this);
@@ -75,13 +76,11 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
 
             for (String address : addressSet) {
                 address=address.substring(CommConstants.MANUFACTOR_TYPE.BitCoin.name().length());
-                logger.info("bitcoin wallet:"+address);
-
-                String key = JedisUtils.getObjectByRawkey(address);
-                if(!StringUtil.isNullStr(key)) {
-                    this.addKeyWallet(key);
+                logger.info("watchedAddress:"+address);
+                if(!StringUtil.isNullStr(address)) {
+                    wallet.addWatchedAddress(convertAddress(address));
                 }else{
-                    logger.error("address:{} key is null!",address);
+                    logger.error("address is null!");
                 }
             }
         }catch (Exception e)
@@ -123,13 +122,11 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
         return key;
     }
 
-    private Wallet loadBitcoinWallet(String privateKey)
+    private Wallet loadBitcoinWallet(ECKey key)
     {
         Wallet wallet = null;
         try
         {
-            ECKey key = loadPrivate(privateKey);
-
             wallet = new Wallet(params);
             wallet.importKey(key);
         }catch (Exception e)
@@ -187,9 +184,11 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
         blockFile = new File(filePath);
         blockStore = new SPVBlockStore(params, blockFile);
 
-        mainAddress = loadPrivate(privateKey).toAddress(params);
+        ECKey key = loadPrivate(privateKey);
 
-        wallet = loadBitcoinWallet(privateKey);
+        mainAddress = key.toAddress(params);
+
+        wallet = loadBitcoinWallet(key);
 
         BlockChain blockChain = new BlockChain(params, wallet, blockStore);
         peerGroup = new PeerGroup(params, blockChain);
@@ -237,11 +236,13 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
         String toAddress = transaction.getOutput(0).getScriptPubKey().getToAddress(params).toString();
 
         //在交易信息中，接收方的地址不一定就是第一个，有放在第二个的情况
-        if(StringUtil.isNullStr(JedisUtils.getObjectByRawkey(toAddress)))
+        if(StringUtil.isNullStr(JedisUtils.getObjectByRawkey(CommConstants.MANUFACTOR_TYPE.BitCoin.name()+toAddress)))
         {
             if(transaction.getOutputs().size()>1)
             {
+                String voutAddress0=toAddress;
                 toAddress = transaction.getOutput(1).getScriptPubKey().getToAddress(params).toString();
+                logger.info("voutAddress0:{},voutAddress1:{}",voutAddress0,toAddress);
             }
         }
 
@@ -263,6 +264,38 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
                 t.printStackTrace();
             }
         });
+    }
+
+    private Address convertAddress(String addrStr)
+    {
+        return Address.fromBase58(params, addrStr);
+    }
+
+    public Address derivedAddress()
+    {
+        Address address= null;
+
+        try
+        {
+            String cmdStr = "bitcoin-cli getnewaddress ";
+            logger.debug(cmdStr);
+
+            Results results = ShellUtil.callShell(cmdStr);
+
+            if(CommConstants.API_RETURN_STATUS.NORMAL.value().equals(results.getStatus())) {
+                address = convertAddress(""+results.getData());
+
+                wallet.addWatchedAddress(address);
+
+                logger.info("new address:{}",address.toString());
+            }else{
+                logger.error(""+results.getData());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return address;
     }
 
     public AddressGroup getNewaddress()
@@ -297,7 +330,7 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
         logger.info("sendCoins to address:{} with {}",address,amount);
         boolean bRet = false;
         try {
-            Address toAddress = Address.fromBase58(params, address);
+            Address toAddress = convertAddress(address);
 
             Coin amountToSend = Coin.parseCoin(amount);
 
@@ -327,7 +360,7 @@ public class BitCoinsReceivedListener implements WalletCoinsReceivedEventListene
         logger.info("sendCoins to address:{} with {} and fee {}",address,amount,fee);
         boolean bRet = false;
         try {
-            Address toAddress = Address.fromBase58(params, address);
+            Address toAddress = convertAddress(address);
 
             Coin amountToSend = Coin.parseCoin(amount);
             Coin feeToSend  =  Coin.parseCoin(fee);

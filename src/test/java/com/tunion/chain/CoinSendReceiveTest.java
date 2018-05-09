@@ -1,5 +1,6 @@
 package com.tunion.chain;
 
+import com.tunion.chain.bitcoinj.service.BitcoinService;
 import com.tunion.cores.BaseTest;
 import com.tunion.cores.result.Results;
 import com.tunion.cores.tools.cache.JedisUtils;
@@ -22,6 +23,9 @@ public class CoinSendReceiveTest extends BaseTest{
 
     @Autowired(required = false)
     private IDubboChainRouter iDubboChainRouter;
+
+    @Autowired
+    private BitcoinService bitcoinService;
 
     @Test
     public void createAddress()
@@ -87,5 +91,37 @@ public class CoinSendReceiveTest extends BaseTest{
 
         String msg=JedisUtils.popMessage();
         logger.info(msg);
+
+        Map msgParam = (Map)JacksonUtil.getJacksonObj(msg,Map.class);
+
+        logger.info(""+msgParam.get("accoutAddress"));
+    }
+
+    @Test
+    public void batchWithdrawal()
+    {
+        try {
+
+            Map mapTrans = new HashMap();
+
+            mapTrans.put("mmukg2FqRrNU4ZKERv2FcZHicAs8v2hcZF",0.01);
+            mapTrans.put("n1oLje7r3kAvjrAyABXf4X5YuVNxrhWVpZ",0.01);
+
+            Results results = bitcoinService.batchWithdrawal(mapTrans,"0.001","batch Transaction");
+
+            logger.info("response data:{}", JacksonUtil.getJackson(results));
+
+        }catch (Exception e)
+        {
+            logger.error(e.getMessage());
+        }
+    }
+
+    @Test
+    public void newAddress()
+    {
+        Results results = bitcoinService.createAddress("helloworld");
+
+        logger.info("response data:{}", JacksonUtil.getJackson(results));
     }
 }
